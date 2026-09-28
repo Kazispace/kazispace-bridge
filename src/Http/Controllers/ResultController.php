@@ -6,6 +6,9 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\DB;
+use Kazispace\Bridge\Support\CurveWindow;
+use Kazispace\Bridge\Support\InvalidCurveWindow;
+use Kazispace\Bridge\Support\OrganizationScope;
 
 class ResultController extends Controller
 {
@@ -20,17 +23,39 @@ class ResultController extends Controller
         return response()->json(['snapshot' => $row]);
     }
 
+    public function snapshots(Request $request): JsonResponse
+    {
+        $organizationId = $this->organizationId();
+        $rows = DB::table('kz_vehicle_battery_snapshot')
+            ->where('organization_id', $organizationId)
+            ->orderByDesc('observed_at')
+            ->get();
+
+        return response()->json(['snapshots' => $rows]);
+    }
+
     public function samples(Request $request, string $vehicleId): JsonResponse
     {
         $organizationId = $this->organizationId();
+        try {
+            $window = CurveWindow::resolve($request->query('from'), $request->query('to'), gmdate('Y-m-d\TH:i:s\Z'));
+        } catch (InvalidCurveWindow $error) {
+            return response()->json(['error' => $error->getMessage()], 422);
+        }
+
         $rows = DB::table('kz_vehicle_battery_samples')
             ->where('organization_id', $organizationId)
             ->where('fleetbase_vehicle_id', $vehicleId)
-            ->orderByDesc('observed_at')
-            ->limit(500)
-            ->get();
+            ->where('observed_at', '>=', $window->from)
+            ->where('observed_at', '<=', $window->to)
+            ->orderBy('observed_at')
+            ->get(CurveWindow::COLUMNS);
 
-        return response()->json(['samples' => $rows]);
+        return response()->json([
+            'from' => $window->from,
+            'to' => $window->to,
+            'samples' => $rows,
+        ]);
     }
 
     public function alerts(Request $request): JsonResponse
@@ -63,12 +88,11 @@ class ResultController extends Controller
 
     private function organizationId(): string
     {
-        $user = auth()->user();
-        $organizationId = $user->company_uuid ?? $user->company_id ?? null;
-        if (! is_string($organizationId) && ! is_numeric($organizationId)) {
+        $organizationId = OrganizationScope::fromUser(auth()->user());
+        if ($organizationId === null) {
             abort(403, 'organization unresolved');
         }
 
-        return (string) $organizationId;
+        return $organizationId;
     }
 }

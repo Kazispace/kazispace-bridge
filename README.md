@@ -41,7 +41,16 @@ Requests older than five minutes are rejected.
 
 ## Console
 
-Authenticated Fleetbase users read results at `/int/v1/kazispace/...`. See [`console/README.md`](console/README.md).
+Fleetbase console sessions read results at `/int/v1/kazispace/...` through `fleetbase.protected`. The organization is the signed-in user's `company_uuid`. See [`console/README.md`](console/README.md).
+
+## Tests
+
+```bash
+find src -name '*.php' -print0 | xargs -0 -n1 php -l
+find tests -name '*_test.php' -print0 | xargs -0 -n1 php
+```
+
+Pull requests and pushes to `main` run the same commands in `.github/workflows/test.yml`.
 
 ## License
 
