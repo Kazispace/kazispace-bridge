@@ -6,6 +6,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\DB;
+use Kazispace\Bridge\Support\SnapshotFreshness;
 
 class IngestController extends Controller
 {
@@ -19,7 +20,7 @@ class IngestController extends Controller
         $vehicleId = $payload['fleetbase_vehicle_id'] ?? null;
         $observedAt = $payload['observed_at'] ?? null;
 
-        if (! is_string($organizationId) || $organizationId === '' || ! is_string($vehicleId) || $vehicleId === '' || ! is_string($observedAt) || ! $this->isUtcTimestamp($observedAt)) {
+        if (! is_string($organizationId) || $organizationId === '' || ! is_string($vehicleId) || $vehicleId === '' || ! SnapshotFreshness::isUtc($observedAt)) {
             return response()->json(['error' => 'organization_id, fleetbase_vehicle_id, and observed_at (UTC ISO-8601) are required'], 422);
         }
 
@@ -49,12 +50,12 @@ class IngestController extends Controller
             $existing = DB::table('kz_vehicle_battery_snapshot')->where($key)->first();
             if ($existing === null) {
                 DB::table('kz_vehicle_battery_snapshot')->insert($key + $snapshotValues + ['created_at' => $now]);
-            } elseif ($this->isNewer($this->storedTimestamp($existing->observed_at), $observedAt)) {
+            } elseif (SnapshotFreshness::isNewer($existing->observed_at, $observedAt)) {
                 DB::table('kz_vehicle_battery_snapshot')->where($key)->update($snapshotValues);
             }
 
             foreach ($samples as $sample) {
-                if (! is_array($sample) || ! $this->isUtcTimestamp($sample['observed_at'] ?? null)) {
+                if (! is_array($sample) || ! SnapshotFreshness::isUtc($sample['observed_at'] ?? null)) {
                     continue;
                 }
                 DB::table('kz_vehicle_battery_samples')->insertOrIgnore([
@@ -107,30 +108,5 @@ class IngestController extends Controller
         });
 
         return response()->json(['stored' => true]);
-    }
-
-    private function isUtcTimestamp(mixed $value): bool
-    {
-        return is_string($value) && preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/', $value) === 1;
-    }
-
-    private function storedTimestamp(mixed $stored): string
-    {
-        if ($stored instanceof \DateTimeInterface) {
-            return $stored->format('Y-m-d\TH:i:s\Z');
-        }
-
-        return is_string($stored) ? $stored : '';
-    }
-
-    private function isNewer(string $stored, string $incoming): bool
-    {
-        $storedAt = strtotime($stored);
-        $incomingAt = strtotime($incoming);
-        if ($storedAt === false || $incomingAt === false) {
-            return false;
-        }
-
-        return $incomingAt > $storedAt;
     }
 }

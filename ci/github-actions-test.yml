@@ -1,0 +1,21 @@
+# Not active until this file is moved to .github/workflows/test.yml.
+# Pushing that path requires a GitHub token with the workflow scope.
+name: tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  php:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+      - name: Syntax check
+        run: find src -name '*.php' -print0 | xargs -0 -n1 php -l
+      - name: Snapshot freshness
+        run: php tests/snapshot_freshness_test.php

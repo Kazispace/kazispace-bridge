@@ -45,6 +45,15 @@ Requests older than five minutes are rejected.
 
 Authenticated Fleetbase users read results at `/int/v1/kazispace/...`. See [`console/README.md`](console/README.md).
 
+## Tests
+
+```bash
+find src -name '*.php' -print0 | xargs -0 -n1 php -l
+php tests/snapshot_freshness_test.php
+```
+
+The workflow that runs these commands is `ci/github-actions-test.yml`. It is not installed under `.github/workflows` yet: the current GitHub token has the `repo` scope only, and GitHub rejects a workflow file without the `workflow` scope.
+
 ## License
 
 GNU Affero General Public License v3. See [LICENSE](LICENSE). If you modify this bridge and users reach that modification over the network, you must offer them the corresponding source.
