@@ -35,7 +35,9 @@ Headers:
 - `X-Kazispace-Timestamp`: unix seconds
 - `X-Kazispace-Signature`: hex HMAC-SHA256 of `timestamp + "." + raw body`
 
-The body shape is in [`contract/result.example.json`](contract/result.example.json). Unknown algorithm internals are rejected by omission: only these result fields are stored.
+The body shape is in [`contract/result.example.json`](contract/result.example.json). `contract_version` must be `"1"`. Unknown algorithm internals are rejected by omission: only these result fields are stored.
+
+A snapshot is updated only when the new `observed_at` is later than the stored one. The snapshot, curve points, and alert are written in one transaction.
 
 Requests older than five minutes are rejected.
 

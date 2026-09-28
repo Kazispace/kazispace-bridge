@@ -12,6 +12,9 @@ class IngestController extends Controller
     public function store(Request $request): JsonResponse
     {
         $payload = $request->json()->all();
+        if (($payload['contract_version'] ?? null) !== '1') {
+            return response()->json(['error' => 'contract_version must be 1'], 422);
+        }
         $organizationId = $payload['organization_id'] ?? null;
         $vehicleId = $payload['fleetbase_vehicle_id'] ?? null;
         $observedAt = $payload['observed_at'] ?? null;
@@ -21,83 +24,87 @@ class IngestController extends Controller
         }
 
         $snapshot = is_array($payload['snapshot'] ?? null) ? $payload['snapshot'] : [];
-        $now = now();
-        $snapshotValues = [
-            'soc' => $snapshot['soc'] ?? null,
-            'soh' => $snapshot['soh'] ?? null,
-            'pack_voltage' => $snapshot['pack_voltage'] ?? null,
-            'cell_delta_v' => $snapshot['cell_delta_v'] ?? null,
-            'temp_max' => $snapshot['temp_max'] ?? null,
-            'charge_state' => $snapshot['charge_state'] ?? null,
-            'health_score' => $snapshot['health_score'] ?? null,
-            'health_risk' => $snapshot['health_risk'] ?? null,
-            'range_estimate_km' => $snapshot['range_estimate_km'] ?? null,
-            'observed_at' => $observedAt,
-            'updated_at' => $now,
-        ];
-        $key = [
-            'organization_id' => $organizationId,
-            'fleetbase_vehicle_id' => $vehicleId,
-        ];
-        $existing = DB::table('kz_vehicle_battery_snapshot')->where($key)->exists();
-        if ($existing) {
-            DB::table('kz_vehicle_battery_snapshot')->where($key)->update($snapshotValues);
-        } else {
-            DB::table('kz_vehicle_battery_snapshot')->insert($key + $snapshotValues + ['created_at' => $now]);
-        }
+        $samples = is_array($payload['samples'] ?? null) ? $payload['samples'] : [];
+        $alert = is_array($payload['alert'] ?? null) ? $payload['alert'] : null;
 
-        foreach ($payload['samples'] ?? [] as $sample) {
-            if (! is_array($sample) || ! $this->isUtcTimestamp($sample['observed_at'] ?? null)) {
-                continue;
-            }
-            DB::table('kz_vehicle_battery_samples')->insertOrIgnore([
+        DB::transaction(function () use ($organizationId, $vehicleId, $observedAt, $snapshot, $samples, $alert): void {
+            $now = now();
+            $snapshotValues = [
+                'soc' => $snapshot['soc'] ?? null,
+                'soh' => $snapshot['soh'] ?? null,
+                'pack_voltage' => $snapshot['pack_voltage'] ?? null,
+                'cell_delta_v' => $snapshot['cell_delta_v'] ?? null,
+                'temp_max' => $snapshot['temp_max'] ?? null,
+                'charge_state' => $snapshot['charge_state'] ?? null,
+                'health_score' => $snapshot['health_score'] ?? null,
+                'health_risk' => $snapshot['health_risk'] ?? null,
+                'range_estimate_km' => $snapshot['range_estimate_km'] ?? null,
+                'observed_at' => $observedAt,
+                'updated_at' => $now,
+            ];
+            $key = [
                 'organization_id' => $organizationId,
                 'fleetbase_vehicle_id' => $vehicleId,
-                'observed_at' => $sample['observed_at'],
-                'soc' => $sample['soc'] ?? null,
-                'soh' => $sample['soh'] ?? null,
-                'pack_voltage' => $sample['pack_voltage'] ?? null,
-                'temp_max' => $sample['temp_max'] ?? null,
-                'speed' => $sample['speed'] ?? null,
-                'created_at' => $now,
-            ]);
-        }
-
-        $alert = is_array($payload['alert'] ?? null) ? $payload['alert'] : null;
-        if ($alert !== null && ! empty($alert['alert_text'])) {
-            $faultCode = $alert['fault_code'] ?? null;
-            $open = null;
-            if (is_string($faultCode) && $faultCode !== '') {
-                $open = DB::table('kz_vehicle_alerts')
-                    ->where('organization_id', $organizationId)
-                    ->where('fleetbase_vehicle_id', $vehicleId)
-                    ->where('fault_code', $faultCode)
-                    ->where('status', 'open')
-                    ->first();
+            ];
+            $existing = DB::table('kz_vehicle_battery_snapshot')->where($key)->first();
+            if ($existing === null) {
+                DB::table('kz_vehicle_battery_snapshot')->insert($key + $snapshotValues + ['created_at' => $now]);
+            } elseif ($this->isNewer($this->storedTimestamp($existing->observed_at), $observedAt)) {
+                DB::table('kz_vehicle_battery_snapshot')->where($key)->update($snapshotValues);
             }
-            if ($open !== null) {
-                DB::table('kz_vehicle_alerts')->where('id', $open->id)->update([
-                    'alert_level' => $alert['alert_level'] ?? 'info',
-                    'alert_text' => $alert['alert_text'],
-                    'fault_summary' => $alert['fault_summary'] ?? null,
-                    'repair_advice' => $alert['repair_advice'] ?? null,
-                    'updated_at' => $now,
-                ]);
-            } else {
-                DB::table('kz_vehicle_alerts')->insert([
+
+            foreach ($samples as $sample) {
+                if (! is_array($sample) || ! $this->isUtcTimestamp($sample['observed_at'] ?? null)) {
+                    continue;
+                }
+                DB::table('kz_vehicle_battery_samples')->insertOrIgnore([
                     'organization_id' => $organizationId,
                     'fleetbase_vehicle_id' => $vehicleId,
-                    'alert_level' => $alert['alert_level'] ?? 'info',
-                    'alert_text' => $alert['alert_text'],
-                    'fault_code' => $faultCode,
-                    'fault_summary' => $alert['fault_summary'] ?? null,
-                    'repair_advice' => $alert['repair_advice'] ?? null,
-                    'status' => 'open',
+                    'observed_at' => $sample['observed_at'],
+                    'soc' => $sample['soc'] ?? null,
+                    'soh' => $sample['soh'] ?? null,
+                    'pack_voltage' => $sample['pack_voltage'] ?? null,
+                    'temp_max' => $sample['temp_max'] ?? null,
+                    'speed' => $sample['speed'] ?? null,
                     'created_at' => $now,
-                    'updated_at' => $now,
                 ]);
             }
-        }
+
+            if ($alert !== null && ! empty($alert['alert_text'])) {
+                $faultCode = $alert['fault_code'] ?? null;
+                $open = null;
+                if (is_string($faultCode) && $faultCode !== '') {
+                    $open = DB::table('kz_vehicle_alerts')
+                        ->where('organization_id', $organizationId)
+                        ->where('fleetbase_vehicle_id', $vehicleId)
+                        ->where('fault_code', $faultCode)
+                        ->where('status', 'open')
+                        ->first();
+                }
+                if ($open !== null) {
+                    DB::table('kz_vehicle_alerts')->where('id', $open->id)->update([
+                        'alert_level' => $alert['alert_level'] ?? 'info',
+                        'alert_text' => $alert['alert_text'],
+                        'fault_summary' => $alert['fault_summary'] ?? null,
+                        'repair_advice' => $alert['repair_advice'] ?? null,
+                        'updated_at' => $now,
+                    ]);
+                } else {
+                    DB::table('kz_vehicle_alerts')->insert([
+                        'organization_id' => $organizationId,
+                        'fleetbase_vehicle_id' => $vehicleId,
+                        'alert_level' => $alert['alert_level'] ?? 'info',
+                        'alert_text' => $alert['alert_text'],
+                        'fault_code' => $faultCode,
+                        'fault_summary' => $alert['fault_summary'] ?? null,
+                        'repair_advice' => $alert['repair_advice'] ?? null,
+                        'status' => 'open',
+                        'created_at' => $now,
+                        'updated_at' => $now,
+                    ]);
+                }
+            }
+        });
 
         return response()->json(['stored' => true]);
     }
@@ -105,5 +112,25 @@ class IngestController extends Controller
     private function isUtcTimestamp(mixed $value): bool
     {
         return is_string($value) && preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/', $value) === 1;
+    }
+
+    private function storedTimestamp(mixed $stored): string
+    {
+        if ($stored instanceof \DateTimeInterface) {
+            return $stored->format('Y-m-d\TH:i:s\Z');
+        }
+
+        return is_string($stored) ? $stored : '';
+    }
+
+    private function isNewer(string $stored, string $incoming): bool
+    {
+        $storedAt = strtotime($stored);
+        $incomingAt = strtotime($incoming);
+        if ($storedAt === false || $incomingAt === false) {
+            return false;
+        }
+
+        return $incomingAt > $storedAt;
     }
 }
