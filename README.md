@@ -52,7 +52,7 @@ find src -name '*.php' -print0 | xargs -0 -n1 php -l
 php tests/snapshot_freshness_test.php
 ```
 
-The workflow that runs these commands is `ci/github-actions-test.yml`. It is not installed under `.github/workflows` yet: the current GitHub token has the `repo` scope only, and GitHub rejects a workflow file without the `workflow` scope.
+Pull requests and pushes to `main` run the same commands in `.github/workflows/test.yml`.
 
 ## License
 

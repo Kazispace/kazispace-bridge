@@ -1,5 +1,3 @@
-# Not active until this file is moved to .github/workflows/test.yml.
-# Pushing that path requires a GitHub token with the workflow scope.
 name: tests
 
 on:
