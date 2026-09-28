@@ -16,8 +16,8 @@ class IngestController extends Controller
         $vehicleId = $payload['fleetbase_vehicle_id'] ?? null;
         $observedAt = $payload['observed_at'] ?? null;
 
-        if (! is_string($organizationId) || $organizationId === '' || ! is_string($vehicleId) || $vehicleId === '' || ! is_string($observedAt) || $observedAt === '') {
-            return response()->json(['error' => 'organization_id, fleetbase_vehicle_id, and observed_at are required'], 422);
+        if (! is_string($organizationId) || $organizationId === '' || ! is_string($vehicleId) || $vehicleId === '' || ! is_string($observedAt) || ! $this->isUtcTimestamp($observedAt)) {
+            return response()->json(['error' => 'organization_id, fleetbase_vehicle_id, and observed_at (UTC ISO-8601) are required'], 422);
         }
 
         $snapshot = is_array($payload['snapshot'] ?? null) ? $payload['snapshot'] : [];
@@ -47,10 +47,10 @@ class IngestController extends Controller
         }
 
         foreach ($payload['samples'] ?? [] as $sample) {
-            if (! is_array($sample) || empty($sample['observed_at'])) {
+            if (! is_array($sample) || ! $this->isUtcTimestamp($sample['observed_at'] ?? null)) {
                 continue;
             }
-            DB::table('kz_vehicle_battery_samples')->insert([
+            DB::table('kz_vehicle_battery_samples')->insertOrIgnore([
                 'organization_id' => $organizationId,
                 'fleetbase_vehicle_id' => $vehicleId,
                 'observed_at' => $sample['observed_at'],
@@ -65,20 +65,45 @@ class IngestController extends Controller
 
         $alert = is_array($payload['alert'] ?? null) ? $payload['alert'] : null;
         if ($alert !== null && ! empty($alert['alert_text'])) {
-            DB::table('kz_vehicle_alerts')->insert([
-                'organization_id' => $organizationId,
-                'fleetbase_vehicle_id' => $vehicleId,
-                'alert_level' => $alert['alert_level'] ?? 'info',
-                'alert_text' => $alert['alert_text'],
-                'fault_code' => $alert['fault_code'] ?? null,
-                'fault_summary' => $alert['fault_summary'] ?? null,
-                'repair_advice' => $alert['repair_advice'] ?? null,
-                'status' => 'open',
-                'created_at' => $now,
-                'updated_at' => $now,
-            ]);
+            $faultCode = $alert['fault_code'] ?? null;
+            $open = null;
+            if (is_string($faultCode) && $faultCode !== '') {
+                $open = DB::table('kz_vehicle_alerts')
+                    ->where('organization_id', $organizationId)
+                    ->where('fleetbase_vehicle_id', $vehicleId)
+                    ->where('fault_code', $faultCode)
+                    ->where('status', 'open')
+                    ->first();
+            }
+            if ($open !== null) {
+                DB::table('kz_vehicle_alerts')->where('id', $open->id)->update([
+                    'alert_level' => $alert['alert_level'] ?? 'info',
+                    'alert_text' => $alert['alert_text'],
+                    'fault_summary' => $alert['fault_summary'] ?? null,
+                    'repair_advice' => $alert['repair_advice'] ?? null,
+                    'updated_at' => $now,
+                ]);
+            } else {
+                DB::table('kz_vehicle_alerts')->insert([
+                    'organization_id' => $organizationId,
+                    'fleetbase_vehicle_id' => $vehicleId,
+                    'alert_level' => $alert['alert_level'] ?? 'info',
+                    'alert_text' => $alert['alert_text'],
+                    'fault_code' => $faultCode,
+                    'fault_summary' => $alert['fault_summary'] ?? null,
+                    'repair_advice' => $alert['repair_advice'] ?? null,
+                    'status' => 'open',
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ]);
+            }
         }
 
         return response()->json(['stored' => true]);
+    }
+
+    private function isUtcTimestamp(mixed $value): bool
+    {
+        return is_string($value) && preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/', $value) === 1;
     }
 }

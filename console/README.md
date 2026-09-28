@@ -1,6 +1,6 @@
 # Console mount
 
-Fleetbase renders this data inside the existing console. The Ember engine is a separate UI package that calls only these authenticated routes:
+The Laravel package serves the data. The Ember engine that draws the Fleetbase pages is not in this repository yet. Until that package exists, "one console" stops at these authenticated JSON routes:
 
 - `GET /int/v1/kazispace/vehicles/{vehicleId}/snapshot`
 - `GET /int/v1/kazispace/vehicles/{vehicleId}/samples`

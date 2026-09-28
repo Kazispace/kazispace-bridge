@@ -22,7 +22,9 @@ php artisan migrate
 KAZISPACE_BRIDGE_HMAC_SECRET=replace-with-a-long-random-string
 ```
 
-The same secret is configured on the private Engine. The Engine signs each request; this package only checks the signature and stores the JSON.
+Use this exact name on the Engine as well.
+
+The Engine signs each request with `KAZISPACE_BRIDGE_HMAC_SECRET`. This package reads the same variable. The Engine sends the exact raw body bytes.
 
 ## Ingest
 
