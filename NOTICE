@@ -1,0 +1,7 @@
+kazispace-bridge
+Copyright (C) 2026 Kazispace
+
+This program is free software under the GNU Affero General Public License
+version 3. It stores and renders results that a separate Kazispace Engine
+has already computed. It does not contain battery decode rules, health
+models, fault-diagnosis logic, or AI prompts.

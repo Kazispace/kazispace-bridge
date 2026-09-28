@@ -1,0 +1,33 @@
+{
+  "organization_id": "org_123",
+  "fleetbase_vehicle_id": "vehicle_abc",
+  "observed_at": "2026-09-28T02:00:00Z",
+  "snapshot": {
+    "soc": 62.5,
+    "soh": 91.0,
+    "pack_voltage": 386.4,
+    "cell_delta_v": 0.02,
+    "temp_max": 34.1,
+    "charge_state": "discharging",
+    "health_score": 88,
+    "health_risk": "low",
+    "range_estimate_km": 140
+  },
+  "samples": [
+    {
+      "observed_at": "2026-09-28T02:00:00Z",
+      "soc": 62.5,
+      "soh": 91.0,
+      "pack_voltage": 386.4,
+      "temp_max": 34.1,
+      "speed": 32
+    }
+  ],
+  "alert": {
+    "alert_level": "warning",
+    "alert_text": "Battery temperature is elevated.",
+    "fault_code": "BMS-TEMP",
+    "fault_summary": "Pack temperature exceeded the configured warning threshold.",
+    "repair_advice": "Reduce load and inspect cooling."
+  }
+}
