@@ -6,6 +6,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\DB;
+use Kazispace\Bridge\Support\ResultApply;
 use Kazispace\Bridge\Support\SnapshotFreshness;
 
 class IngestController extends Controller
@@ -27,9 +28,19 @@ class IngestController extends Controller
         $snapshot = is_array($payload['snapshot'] ?? null) ? $payload['snapshot'] : [];
         $samples = is_array($payload['samples'] ?? null) ? $payload['samples'] : [];
         $alert = is_array($payload['alert'] ?? null) ? $payload['alert'] : null;
+        $observedAtSql = SnapshotFreshness::toSqlUtc($observedAt);
 
-        DB::transaction(function () use ($organizationId, $vehicleId, $observedAt, $snapshot, $samples, $alert): void {
+        $snapshotUpdated = DB::transaction(function () use ($organizationId, $vehicleId, $observedAt, $observedAtSql, $snapshot, $samples, $alert): bool {
             $now = now();
+            $key = [
+                'organization_id' => $organizationId,
+                'fleetbase_vehicle_id' => $vehicleId,
+            ];
+            $existing = DB::table('kz_vehicle_battery_snapshot')->where($key)->lockForUpdate()->first();
+            if (! ResultApply::accepts($existing?->observed_at, $observedAt)) {
+                return false;
+            }
+
             $snapshotValues = [
                 'soc' => $snapshot['soc'] ?? null,
                 'soh' => $snapshot['soh'] ?? null,
@@ -40,18 +51,19 @@ class IngestController extends Controller
                 'health_score' => $snapshot['health_score'] ?? null,
                 'health_risk' => $snapshot['health_risk'] ?? null,
                 'range_estimate_km' => $snapshot['range_estimate_km'] ?? null,
-                'observed_at' => $observedAt,
+                'observed_at' => $observedAtSql,
                 'updated_at' => $now,
             ];
-            $key = [
-                'organization_id' => $organizationId,
-                'fleetbase_vehicle_id' => $vehicleId,
-            ];
-            $existing = DB::table('kz_vehicle_battery_snapshot')->where($key)->first();
             if ($existing === null) {
                 DB::table('kz_vehicle_battery_snapshot')->insert($key + $snapshotValues + ['created_at' => $now]);
-            } elseif (SnapshotFreshness::isNewer($existing->observed_at, $observedAt)) {
-                DB::table('kz_vehicle_battery_snapshot')->where($key)->update($snapshotValues);
+            } else {
+                $updated = DB::table('kz_vehicle_battery_snapshot')
+                    ->where($key)
+                    ->where('observed_at', '<', $observedAtSql)
+                    ->update($snapshotValues);
+                if ($updated !== 1) {
+                    return false;
+                }
             }
 
             foreach ($samples as $sample) {
@@ -61,7 +73,7 @@ class IngestController extends Controller
                 DB::table('kz_vehicle_battery_samples')->insertOrIgnore([
                     'organization_id' => $organizationId,
                     'fleetbase_vehicle_id' => $vehicleId,
-                    'observed_at' => $sample['observed_at'],
+                    'observed_at' => SnapshotFreshness::toSqlUtc($sample['observed_at']),
                     'soc' => $sample['soc'] ?? null,
                     'soh' => $sample['soh'] ?? null,
                     'pack_voltage' => $sample['pack_voltage'] ?? null,
@@ -105,8 +117,10 @@ class IngestController extends Controller
                     ]);
                 }
             }
+
+            return true;
         });
 
-        return response()->json(['stored' => true]);
+        return response()->json(ResultApply::response($snapshotUpdated));
     }
 }
