@@ -54,15 +54,6 @@ find tests -name '*_test.php' -print0 | xargs -0 -n1 php
 
 Pull requests and pushes to `main` run the same commands in `.github/workflows/test.yml`.
 
-## Tests
-
-```bash
-find src -name '*.php' -print0 | xargs -0 -n1 php -l
-find tests -name '*_test.php' -print0 | xargs -0 -n1 php
-```
-
-Pull requests and pushes to `main` run the same commands in `.github/workflows/test.yml`.
-
 ## License
 
 GNU Affero General Public License v3. See [LICENSE](LICENSE). If you modify this bridge and users reach that modification over the network, you must offer them the corresponding source.

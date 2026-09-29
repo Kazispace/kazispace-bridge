@@ -4,11 +4,16 @@ namespace Kazispace\Bridge\Support;
 
 final class CurveWindow
 {
+    public const MAX_SPAN_SECONDS = 86400;
+
     public const COLUMNS = ['observed_at', 'soc', 'soh', 'pack_voltage', 'temp_max', 'speed'];
 
-    public const ROW_LIMIT = null;
-
-    public function __construct(public readonly string $from, public readonly string $to) {}
+    public function __construct(
+        public readonly string $from,
+        public readonly string $to,
+        public readonly string $sqlFrom,
+        public readonly string $sqlTo,
+    ) {}
 
     public static function resolve(mixed $from, mixed $to, string $now): self
     {
@@ -21,7 +26,7 @@ final class CurveWindow
             $end = new \DateTimeImmutable($now);
             $start = $end->sub(new \DateInterval('PT24H'));
 
-            return new self($start->format('Y-m-d\TH:i:s\Z'), $end->format('Y-m-d\TH:i:s\Z'));
+            return self::open($start->format('Y-m-d\TH:i:s\Z'), $end->format('Y-m-d\TH:i:s\Z'));
         }
 
         if (! $hasFrom || ! $hasTo || ! self::isUtc($from) || ! self::isUtc($to)) {
@@ -31,7 +36,23 @@ final class CurveWindow
             throw new InvalidCurveWindow('from must not be later than to');
         }
 
-        return new self($from, $to);
+        return self::open($from, $to);
+    }
+
+    private static function open(string $from, string $to): self
+    {
+        $sqlFrom = SnapshotFreshness::toSqlUtc($from);
+        $sqlTo = SnapshotFreshness::toSqlUtc($to);
+        if ($sqlFrom === null || $sqlTo === null) {
+            throw new InvalidCurveWindow('from and to must be YYYY-MM-DDTHH:MM:SSZ');
+        }
+        $start = new \DateTimeImmutable($from);
+        $end = new \DateTimeImmutable($to);
+        if (($end->getTimestamp() - $start->getTimestamp()) > self::MAX_SPAN_SECONDS) {
+            throw new InvalidCurveWindow('window must not exceed 24 hours');
+        }
+
+        return new self($from, $to, $sqlFrom, $sqlTo);
     }
 
     private static function isUtc(mixed $value): bool

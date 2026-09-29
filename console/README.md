@@ -12,7 +12,7 @@ The organization is `User.company_uuid` only. `company_id` is not a fallback. Th
 
 `snapshots` lists one current snapshot per vehicle in that company, for the fleet overview.
 
-`samples` is the curve. It returns the downsampled columns already stored in MySQL: `observed_at`, `soc`, `soh`, `pack_voltage`, `temp_max`, `speed`. It does not return raw frames. `from` and `to` are inclusive. Omit both and the window is the last 24 hours. A window is not truncated at 500 points. A bad timestamp or a reversed window is `422`.
+`samples` is the curve. `from` and `to` stay `YYYY-MM-DDTHH:MM:SSZ` on the query string. The SQL comparison binds UTC `Y-m-d H:i:s`, the same form ingest writes. Omit both and the window is the last 24 hours. A span longer than 24 hours is `422`. Points inside an accepted window are not cut at 500. The columns are the stored curve fields (`observed_at`, `soc`, `soh`, `pack_voltage`, `temp_max`, `speed`), not raw frames. Longer history waits for the Timescale aggregate proxy.
 
 Pages to mount in the console sidebar:
 

@@ -46,8 +46,8 @@ class ResultController extends Controller
         $rows = DB::table('kz_vehicle_battery_samples')
             ->where('organization_id', $organizationId)
             ->where('fleetbase_vehicle_id', $vehicleId)
-            ->where('observed_at', '>=', $window->from)
-            ->where('observed_at', '<=', $window->to)
+            ->where('observed_at', '>=', $window->sqlFrom)
+            ->where('observed_at', '<=', $window->sqlTo)
             ->orderBy('observed_at')
             ->get(CurveWindow::COLUMNS);
 
