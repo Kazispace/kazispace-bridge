@@ -26,9 +26,10 @@ class BridgeServiceProvider extends ServiceProvider
                 Route::post('ingest', [\Kazispace\Bridge\Http\Controllers\IngestController::class, 'store']);
             });
 
-        Route::middleware(['web', 'auth'])
+        Route::middleware(['fleetbase.protected'])
             ->prefix('int/v1/kazispace')
             ->group(function (): void {
+                Route::get('snapshots', [\Kazispace\Bridge\Http\Controllers\ResultController::class, 'snapshots']);
                 Route::get('vehicles/{vehicleId}/snapshot', [\Kazispace\Bridge\Http\Controllers\ResultController::class, 'snapshot']);
                 Route::get('vehicles/{vehicleId}/samples', [\Kazispace\Bridge\Http\Controllers\ResultController::class, 'samples']);
                 Route::get('alerts', [\Kazispace\Bridge\Http\Controllers\ResultController::class, 'alerts']);

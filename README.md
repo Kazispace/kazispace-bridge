@@ -43,7 +43,7 @@ Requests older than five minutes are rejected.
 
 ## Console
 
-Authenticated Fleetbase users read results at `/int/v1/kazispace/...`. See [`console/README.md`](console/README.md).
+Fleetbase console sessions read results at `/int/v1/kazispace/...` through `fleetbase.protected`. The organization is the signed-in user's `company_uuid`. See [`console/README.md`](console/README.md).
 
 ## Tests
 
